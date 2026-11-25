@@ -74,6 +74,19 @@ button{font:inherit;cursor:pointer}
 .sync-text{font-size:13px;color:var(--muted);min-width:0;word-break:break-word}
 .syncbar.bad .sync-text{color:var(--danger)}
 .btn:disabled{opacity:.55}
+:root{--bad-bg:#fee2e2}
+@media (prefers-color-scheme:dark){:root{--bad-bg:#3b1414}}
+.repnums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:6px}
+.repnums div{background:var(--idle-bg);border-radius:10px;padding:10px 4px}
+.repnums b{display:block;font-size:24px;line-height:1.1}
+.repnums span{font-size:11px;color:var(--muted)}
+.repnums .ok{background:var(--ok-bg);color:var(--ok)}.repnums .bad{background:var(--bad-bg);color:var(--danger)}.repnums .warn{background:var(--warn-bg);color:var(--warn)}
+.st{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.st.ok{background:var(--ok-bg);color:var(--ok)}.st.bad{background:var(--bad-bg);color:var(--danger)}.st.warn{background:var(--warn-bg);color:var(--warn)}
+.tagid{font-family:ui-monospace,Consolas,monospace}
+.sech{margin:14px 2px 6px;font-weight:700;font-size:14px}
+.repbtns{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px}
+dialog .list{max-height:48vh;overflow:auto}
 .dock{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);max-width:560px;margin:0 auto}
 .dock .btn{flex:1}
 dialog{border:1px solid var(--line);border-radius:16px;padding:0;width:min(92vw,460px);background:var(--card);color:var(--ink)}
@@ -127,6 +140,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <nav class="tabs">
     <button class="tab on" type="button" data-tab="fabrics">Fabrics <span id="fabCount"></span></button>
     <button class="tab" type="button" data-tab="scans">Scans <span id="scanCount"></span></button>
+    <button class="tab" type="button" data-tab="report">Report <span id="repBadge"></span></button>
   </nav>
 
   <section id="tab-fabrics">
@@ -150,6 +164,19 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <button class="btn small danger" id="clearLog" type="button">Clear log</button>
     </div>
   </section>
+
+  <section id="tab-report" hidden>
+    <div class="card" style="padding:10px 12px"><div id="repSum"></div></div>
+    <div class="repbtns">
+      <button class="btn primary small" id="repNew" type="button">New scan</button>
+      <button class="btn small" id="repCopy" type="button">Copy</button>
+      <button class="btn small" id="repShare" type="button">Share</button>
+      <button class="btn small" id="repCsv" type="button">Download CSV</button>
+    </div>
+    <div class="card"><ul class="list" id="repList"></ul></div>
+    <div class="sech">Past reports</div>
+    <div class="card"><ul class="list" id="repHist"></ul></div>
+  </section>
 </div>
 
 <footer class="dock">
@@ -159,6 +186,13 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </footer>
 
 <input type="file" id="file" accept=".csv,.txt,.tsv,.xlsx" hidden>
+
+<dialog id="dlgPast"><div class="dlg">
+  <h2 id="pastTitle">Report</h2>
+  <div class="card" style="padding:10px 12px"><div id="pastSum"></div></div>
+  <div class="card"><ul class="list" id="pastList"></ul></div>
+  <div class="actions"><button class="btn small" id="pastCopy" type="button">Copy</button><button class="btn small" id="pastCsv" type="button">Download CSV</button><button class="btn primary small" id="pastClose" type="button">Close</button></div>
+</div></dialog>
 
 <dialog id="dlgPaste"><div class="dlg">
   <h2>Paste fabric codes</h2>
@@ -180,6 +214,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="field inline"><input type="checkbox" id="sSound"><label for="sSound" style="margin:0">Beep on match</label></div>
   <div class="field inline"><input type="checkbox" id="sVibe"><label for="sVibe" style="margin:0">Vibrate on match</label></div>
   <div class="field inline"><input type="checkbox" id="sCam"><label for="sCam" style="margin:0">Start the camera automatically</label></div>
+  <div class="field"><label for="sAutoRep">Show the report automatically when scanning pauses for (seconds)</label><input type="number" id="sAutoRep" min="0" max="120" step="1"><small>0 = never. The report is always available on the Report tab.</small></div>
   <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
   <div class="field"><label for="sSheet">Google Sheet link</label><input type="text" id="sSheet" placeholder="Paste the sheet link here" autocomplete="off" inputmode="url">
     <small>In Google Sheets tap Share and set General access to "Anyone with the link" (Viewer). Row 1 headings: <b>Fabric Code</b> and <b>Tag ID</b>. Set both columns to Format, Number, Plain text.</small>
@@ -333,6 +368,39 @@ function sheetUrls(link) {
   if (/^[A-Za-z0-9_-]{25,}$/.test(link)) return sheetUrls('https://docs.google.com/spreadsheets/d/' + link + '/edit');
   return [];
 }
+function buildReport(targets, sess) {
+  var rows = [], expected = 0, found = 0, unknown = 0, other = 0;
+  targets.forEach(function (t) {
+    if (!t.active) return;
+    expected++;
+    if (t.s) { found++; rows.push({ code: t.code, tag: t.s.tag, status: 'Found', reads: t.s.n, first: t.s.first }); }
+    else rows.push({ code: t.code, tag: t.tag || '', status: 'Missing', reads: 0, first: 0 });
+  });
+  Object.keys(sess.unknown || {}).forEach(function (v) { var u = sess.unknown[v]; unknown++; rows.push({ code: '', tag: v, status: 'Unknown tag', reads: u.n, first: u.first }); });
+  Object.keys(sess.other || {}).forEach(function (v) { var u = sess.other[v]; other++; rows.push({ code: u.code || '', tag: v, status: 'Not selected', reads: u.n, first: u.first }); });
+  var order = { 'Missing': 0, 'Unknown tag': 1, 'Not selected': 2, 'Found': 3 };
+  rows.sort(function (a, b) { return order[a.status] - order[b.status] || String(a.code).localeCompare(String(b.code)); });
+  return { rows: rows, expected: expected, found: found, missing: expected - found, unknown: unknown, notSelected: other, start: sess.start || 0, end: sess.end || 0, reads: sess.reads || 0 };
+}
+function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+function reportToCsv(rep) {
+  var lines = ['Fabric Code,Tag ID,Status,Reads,First read'];
+  rep.rows.forEach(function (r) { lines.push([csvCell(r.code), csvCell(r.tag), csvCell(r.status), r.reads, csvCell(r.first ? new Date(r.first).toISOString() : '')].join(',')); });
+  return lines.join('\r\n') + '\r\n';
+}
+function reportToText(rep) {
+  var d = function (ts) { return ts ? new Date(ts).toLocaleString() : '-'; };
+  var out = ['FABRIC FINDER - SCAN REPORT', 'Started: ' + d(rep.start), 'Finished: ' + d(rep.end),
+    'Expected ' + rep.expected + ' | Found ' + rep.found + ' | Missing ' + rep.missing + ' | Unknown tags ' + rep.unknown + (rep.notSelected ? ' | Not selected ' + rep.notSelected : ''), ''];
+  ['Missing', 'Unknown tag', 'Not selected', 'Found'].forEach(function (st) {
+    var list = rep.rows.filter(function (r) { return r.status === st; });
+    if (!list.length) return;
+    out.push(st.toUpperCase() + ' (' + list.length + ')');
+    list.forEach(function (r) { out.push((r.code || '-') + '  |  ' + (r.tag || '-') + '  |  ' + r.status); });
+    out.push('');
+  });
+  return out.join('\n');
+}
 /*CORE-END*/
 
 /* ================= APP ================= */
@@ -342,8 +410,11 @@ function sheetUrls(link) {
   /* BUILT-IN GOOGLE SHEET: paste your sheet's share link between the quotes below. Every device then syncs from this sheet automatically,
      with nothing to set up. Leave it empty to set the link on each device in Settings instead. */
   var BUILT_IN_SHEET = 'https://docs.google.com/spreadsheets/d/1XST5sBnAzpC2Vr3yxClkmUOJ1UcUYwEuiTf3-sNU5OA/edit?gid=1088729316#gid=1088729316';
-  var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true, sheetLink: '', autoSync: true, lastSync: 0 };
+  var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true, sheetLink: '', autoSync: true, lastSync: 0, autoReportSec: 6 };
   var state = { targets: [], settings: Object.assign({}, DEFAULTS), log: [] };
+  var HKEY = 'fabricFinder.reports.v1', history = [], reportShownFor = 0;
+  function newSession() { return { start: 0, end: 0, reads: 0, unknown: {}, other: {} }; }
+  var sess = newSession();
   var nextId = 1, holdUntil = 0, otherUntil = 0, matchTimes = [], lastBeep = 0, lastMatchKey = '', stream = null, audio = null, idleTimer = null, toastTimer = null;
 
   function load() {
@@ -374,7 +445,10 @@ function sheetUrls(link) {
     var n = state.targets.filter(function (t) { return t.active; }).length;
     if (!state.targets.length) setStatus('idle', '●', 'No fabrics yet', 'Upload a file or paste fabric codes to begin.');
     else if (!n) setStatus('idle', '●', 'Nothing selected', 'Tick at least one fabric in the list to look for it.');
-    else setStatus('idle', '●', 'Looking for ' + n + ' fabric' + (n === 1 ? '' : 's'), 'Pull the scanner trigger over the fabric set.');
+    else {
+      var seen = state.targets.filter(function (t) { return t.active && t.s; }).length;
+      setStatus('idle', '●', 'Looking for ' + n + ' fabric' + (n === 1 ? '' : 's'), sess.reads ? seen + ' of ' + n + ' found so far. Keep scanning, or open the Report tab.' : 'Pull the scanner trigger over the fabric set.');
+    }
     $('camBanner').hidden = true;
   }
   function showMatch(hits) {
@@ -407,11 +481,13 @@ function sheetUrls(link) {
     if (!value) return;
     var now = Date.now();
     var hits = matchScan(value, state.targets.filter(function (t) { return t.active; }), opts());
+    if (!sess.start) sess.start = now;
+    sess.end = now; sess.reads++;
     var last = state.log[0];
     if (last && last.value === value && now - last.t < 2000) { last.n++; last.t = now; }
     else { state.log.unshift({ t: now, value: value, hits: hits.map(function (h) { return h.code; }), n: 1, source: source || 'scanner' }); if (state.log.length > 200) state.log.pop(); }
     if (hits.length) {
-      hits.forEach(function (h) { h.found++; h.last = now; });
+      hits.forEach(function (h) { h.found++; h.last = now; if (!h.s) h.s = { n: 0, first: now, tag: value }; h.s.n++; h.s.tag = value; });
       matchTimes.push(now);
       holdUntil = now + state.settings.holdSeconds * 1000; otherUntil = 0;
       var key = hits.map(function (h) { return h.id; }).join(',');
@@ -419,6 +495,9 @@ function sheetUrls(link) {
       if (key !== lastMatchKey || now - lastBeep > 1500) { beep(); vibe(); lastBeep = now; }
       lastMatchKey = key;
     } else {
+      var inactive = matchScan(value, state.targets.filter(function (t) { return !t.active; }), opts());
+      var bucket = inactive.length ? sess.other : sess.unknown, u = bucket[value] || (bucket[value] = { n: 0, first: now, code: '' });
+      u.n++; if (inactive.length) u.code = inactive.map(function (x) { return x.code; }).join(', ');
       otherUntil = now + 1500;
       if (now > holdUntil) showOther(value);
     }
@@ -428,6 +507,8 @@ function sheetUrls(link) {
     var now = Date.now();
     if (holdUntil && now > holdUntil) { holdUntil = 0; lastMatchKey = ''; idleStatus(); renderLists(); }
     else if (!holdUntil && otherUntil && now > otherUntil) { otherUntil = 0; idleStatus(); }
+    var gap = (state.settings.autoReportSec || 0) * 1000;
+    if (gap && sess.reads && sess.end && now - sess.end > gap && reportShownFor !== sess.end && !document.querySelector('dialog[open]')) { reportShownFor = sess.end; autoReport(); }
     updateMeter();
   }
   function updateMeter() {
@@ -486,13 +567,14 @@ function sheetUrls(link) {
     if (!rows.length) { ul.innerHTML = '<li class="empty">' + (state.targets.length ? 'No fabric matches your search.' : 'No fabrics yet.<br>Tap <b>Upload file</b> (CSV or Excel) or <b>Paste codes</b>.') + '</li>'; }
     else ul.innerHTML = rows.map(function (t) {
       var recent = holdUntil && Date.now() - t.last < state.settings.holdSeconds * 1000;
-      return '<li class="row' + (recent ? ' match-row' : '') + '"><input type="checkbox" data-id="' + t.id + '"' + (t.active ? ' checked' : '') + ' aria-label="Look for ' + esc(t.code) + '"><div class="main"><div class="code">' + esc(t.code) + '</div>' + (t.tag ? '<div class="sub">Tag: ' + esc(t.tag) + '</div>' : '') + '</div><span class="found' + (t.found ? ' yes' : '') + '">' + (t.found ? 'Found x' + t.found : 'Not seen') + '</span></li>';
+      return '<li class="row' + (recent ? ' match-row' : '') + '"><input type="checkbox" data-id="' + t.id + '"' + (t.active ? ' checked' : '') + ' aria-label="Look for ' + esc(t.code) + '"><div class="main"><div class="code">' + esc(t.code) + '</div>' + (t.tag ? '<div class="sub">Tag: ' + esc(t.tag) + '</div>' : '') + '</div><span class="found' + (t.s ? ' yes' : '') + '">' + (t.s ? 'Found x' + t.s.n : 'Not seen') + '</span></li>';
     }).join('');
     $('scanCount').textContent = state.log.length ? '(' + state.log.length + ')' : '';
     $('scanList').innerHTML = state.log.length ? state.log.slice(0, 60).map(function (l) {
       var d = new Date(l.t), tm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       return '<li class="row"><div class="main"><div class="code">' + esc(l.value.length > 36 ? l.value.slice(0, 36) + '...' : l.value) + (l.n > 1 ? ' <span class="sub">x' + l.n + '</span>' : '') + '</div><div class="sub">' + tm + (l.hits.length ? ' - matched ' + esc(l.hits.join(', ')) : '') + '</div></div><span class="found' + (l.hits.length ? ' yes' : '') + '">' + (l.hits.length ? 'Match' : 'Other') + '</span></li>';
     }).join('') : '<li class="empty">No scans yet.</li>';
+    renderReport();
     if (!holdUntil && !otherUntil) idleStatus();
   }
 
@@ -532,12 +614,73 @@ function sheetUrls(link) {
     state.log.slice().reverse().forEach(function (l) { lines.push([new Date(l.t).toISOString(), '"' + l.value.replace(/"/g, '""') + '"', l.hits.length ? 'MATCH' : 'other', '"' + l.hits.join(' ') + '"', l.n].join(',')); });
     var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'fabric-finder-log.csv'; a.click();
   });
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
-    b.addEventListener('click', function () {
-      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.toggle('on', x === b); });
-      $('tab-fabrics').hidden = b.getAttribute('data-tab') !== 'fabrics'; $('tab-scans').hidden = b.getAttribute('data-tab') !== 'scans';
-    });
+  function switchTab(name) {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.toggle('on', x.getAttribute('data-tab') === name); });
+    ['fabrics', 'scans', 'report'].forEach(function (n) { $('tab-' + n).hidden = n !== name; });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.addEventListener('click', function () { switchTab(b.getAttribute('data-tab')); }); });
+
+  /* ---------- scan report ---------- */
+  function loadHistory() { try { history = JSON.parse(localStorage.getItem(HKEY) || '[]') || []; } catch (e) { history = []; } }
+  function saveHistory() { try { localStorage.setItem(HKEY, JSON.stringify(history.slice(0, 30))); } catch (e) { } }
+  function currentReport() { return buildReport(state.targets, sess); }
+  function saveSession() {
+    if (!sess.reads) return;
+    var r = currentReport(); r.rows = r.rows.slice(0, 2000);
+    var i = history.findIndex(function (h) { return h.start === r.start; });
+    if (i >= 0) history[i] = r; else history.unshift(r);
+    history.sort(function (a, b) { return b.start - a.start; }); saveHistory();
+  }
+  function resetSession() {
+    saveSession(); state.targets.forEach(function (x) { delete x.s; });
+    sess = newSession(); reportShownFor = 0; renderLists(); idleStatus();
+  }
+  function stClass(s) { return s === 'Found' ? 'ok' : (s === 'Missing' ? 'bad' : 'warn'); }
+  function fillReport(rep, sumEl, listEl) {
+    sumEl.innerHTML = '<div class="repnums"><div><b>' + rep.expected + '</b><span>Expected</span></div><div class="ok"><b>' + rep.found + '</b><span>Found</span></div><div class="' + (rep.missing ? 'bad' : '') + '"><b>' + rep.missing + '</b><span>Missing</span></div><div class="' + (rep.unknown ? 'warn' : '') + '"><b>' + rep.unknown + '</b><span>Unknown tags</span></div></div><div class="hint">' + (rep.start ? 'Started ' + timeStr(rep.start) + ', last read ' + timeStr(rep.end) + ' - ' + rep.reads + ' read' + (rep.reads === 1 ? '' : 's') + (rep.notSelected ? ' - ' + rep.notSelected + ' not selected' : '') : 'No scan yet. Pull the trigger over the fabrics to start.') + '</div>';
+    listEl.innerHTML = rep.rows.length ? rep.rows.map(function (r) {
+      return '<li class="row"><div class="main"><div class="code">' + (r.code ? esc(r.code) : '<i>not in your list</i>') + '</div><div class="sub tagid">Tag ID: ' + (r.tag ? esc(r.tag) : '-') + '</div></div><span class="st ' + stClass(r.status) + '">' + r.status + '</span></li>';
+    }).join('') : '<li class="empty">Nothing to report yet.</li>';
+  }
+  function renderReport() {
+    var rep = currentReport(); fillReport(rep, $('repSum'), $('repList'));
+    $('repBadge').textContent = sess.reads ? '(' + rep.found + '/' + rep.expected + ')' : '';
+    $('repHist').innerHTML = history.length ? history.slice(0, 15).map(function (h, i) {
+      var when = new Date(h.start).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return '<li class="row"><div class="main"><div class="code">' + esc(when) + '</div><div class="sub">' + h.found + ' of ' + h.expected + ' found' + (h.missing ? ' - ' + h.missing + ' missing' : '') + (h.unknown ? ' - ' + h.unknown + ' unknown' : '') + '</div></div><button class="btn small" data-open="' + i + '" type="button">Open</button></li>';
+    }).join('') : '<li class="empty">No past reports yet. Each scan is saved here.</li>';
+  }
+  function autoReport() {
+    saveSession(); renderReport(); switchTab('report');
+    var r = currentReport();
+    toast('Scan finished: ' + r.found + ' of ' + r.expected + ' found' + (r.missing ? ' - ' + r.missing + ' missing' : '') + (r.unknown ? ' - ' + r.unknown + ' unknown' : ''));
+  }
+  function stamp(ts) { var d = new Date(ts || Date.now()), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); }
+  function download(name, text, type) { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+  function copyText(text, okMsg) {
+    var done = function () { toast(okMsg || 'Copied.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) { } ta.remove(); }
+  $('repNew').addEventListener('click', function () { resetSession(); toast('New scan started.'); });
+  $('repCopy').addEventListener('click', function () { saveSession(); copyText(reportToText(currentReport()), 'Report copied. Paste it into WhatsApp or email.'); });
+  $('repShare').addEventListener('click', function () {
+    saveSession(); var text = reportToText(currentReport());
+    if (navigator.share) navigator.share({ title: 'Fabric Finder scan report', text: text }).catch(function () { }); else copyText(text, 'Report copied. Paste it into WhatsApp or email.');
   });
+  $('repCsv').addEventListener('click', function () { saveSession(); download('fabric-finder-report-' + stamp(sess.start) + '.csv', reportToCsv(currentReport()), 'text/csv'); });
+  var pastIdx = -1;
+  $('repHist').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-open]') : null; if (!b) return;
+    pastIdx = +b.getAttribute('data-open'); var h = history[pastIdx]; if (!h) return;
+    $('pastTitle').textContent = 'Report - ' + new Date(h.start).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    fillReport(h, $('pastSum'), $('pastList')); $('dlgPast').showModal();
+  });
+  $('pastCopy').addEventListener('click', function () { if (history[pastIdx]) copyText(reportToText(history[pastIdx]), 'Report copied.'); });
+  $('pastCsv').addEventListener('click', function () { var h = history[pastIdx]; if (h) download('fabric-finder-report-' + stamp(h.start) + '.csv', reportToCsv(h), 'text/csv'); });
+  $('pastClose').addEventListener('click', function () { $('dlgPast').close(); setTimeout(refocus, 50); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) saveSession(); });
 
   /* ---------- Google Sheet sync ---------- */
   var syncing = false, syncMsg = '';
@@ -552,7 +695,7 @@ function sheetUrls(link) {
     var old = {}; state.targets.forEach(function (x) { old[x.code + '|' + x.tag] = x; });
     var keep = state.targets.filter(function (x) { return x.src !== 'sheet'; }), have = {}, next = [];
     keep.forEach(function (x) { have[x.code + '|' + x.tag] = 1; });
-    list.forEach(function (x) { var k = x.code + '|' + x.tag; if (have[k]) return; have[k] = 1; var o = old[k]; next.push({ id: o ? o.id : nextId++, code: x.code, tag: x.tag || '', src: 'sheet', active: o ? o.active : true, found: o ? o.found : 0, last: o ? o.last : 0 }); });
+    list.forEach(function (x) { var k = x.code + '|' + x.tag; if (have[k]) return; have[k] = 1; var o = old[k]; next.push({ id: o ? o.id : nextId++, code: x.code, tag: x.tag || '', src: 'sheet', active: o ? o.active : true, found: o ? o.found : 0, last: o ? o.last : 0, s: o ? o.s : undefined }); });
     state.targets = keep.concat(next); save(); renderLists(); idleStatus();
   }
   async function fetchSheetText(link) {
@@ -592,7 +735,7 @@ function sheetUrls(link) {
   /* ---------- settings ---------- */
   function openSettings(focusSheet) { fillSettings(); $('testBox').value = ''; $('dlgSettings').showModal(); if (focusSheet) setTimeout(function () { $('sSheet').focus(); }, 60); }
   function fillSettings() {
-    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn; $('sSheet').value = s.sheetLink || ''; $('sSheet').placeholder = BUILT_IN_SHEET ? 'Leave empty to use the built-in sheet' : 'Paste the sheet link here';
+    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn; $('sAutoRep').value = (s.autoReportSec == null ? 6 : s.autoReportSec); $('sSheet').value = s.sheetLink || ''; $('sSheet').placeholder = BUILT_IN_SHEET ? 'Leave empty to use the built-in sheet' : 'Paste the sheet link here';
     $('sSheetNote').textContent = BUILT_IN_SHEET ? (s.sheetLink ? 'This device uses its own sheet link. Clear the box to go back to the built-in sheet.' : 'This app is already linked to your shared Google Sheet. Leave the box empty to use it, or paste a different link for this device only.') : ''; $('sAuto').checked = s.autoSync !== false;
   }
   $('btnSettings').addEventListener('click', function () { openSettings(false); });
@@ -601,6 +744,7 @@ function sheetUrls(link) {
     var s = state.settings; s.matchMode = $('sMatch').value; s.ignoreCase = $('sCase').checked; s.stripSpaces = $('sSpaces').checked;
     s.holdSeconds = Math.max(1, Math.min(30, +$('sHold').value || 3)); s.idleMs = Math.max(40, Math.min(1000, +$('sIdle').value || 120));
     s.sound = $('sSound').checked; s.vibrate = $('sVibe').checked; s.cameraOn = $('sCam').checked;
+    var ar = parseInt($('sAutoRep').value, 10); s.autoReportSec = isNaN(ar) ? 6 : Math.max(0, Math.min(120, ar));
     var oldLink = sheetLinkInUse(); s.sheetLink = $('sSheet').value.trim(); s.autoSync = $('sAuto').checked; var newLink = sheetLinkInUse();
     if (!newLink && oldLink) state.targets.forEach(function (x) { if (x.src === 'sheet') x.src = 'local'; });
     save(); $('dlgSettings').close(); setTimeout(refocus, 50); renderSync();
@@ -622,7 +766,7 @@ function sheetUrls(link) {
   $('camToggle').addEventListener('click', function () { if (stream) { stopCam(); } else startCam(); });
 
   /* ---------- start ---------- */
-  load();
+  load(); loadHistory();
   var params = new URLSearchParams(location.search);
   if (params.get('demo') === '1' && !state.targets.length) {
     state.targets = ['FAB-1001', 'FAB-1002', 'FAB-1003', 'LINEN-WHITE-07', 'OXFORD-BLUE-12', 'CORD-BROWN-03'].map(function (c) { return { id: nextId++, code: c, tag: '', src: 'local', active: true, found: 0, last: 0 }; });
@@ -632,7 +776,7 @@ function sheetUrls(link) {
   if (state.settings.cameraOn && params.get('nocam') !== '1') startCam();
   setTimeout(refocus, 100);
   if (sheetLinkInUse() && state.settings.autoSync) setTimeout(function () { syncSheet(false); }, 400);
-  if (params.get('sim')) setTimeout(function () { handleScan(params.get('sim'), 'test'); }, 150);
+  if (params.get('sim')) setTimeout(function () { params.get('sim').split(',').forEach(function (v) { handleScan(v, 'test'); }); if (params.get('tab')) switchTab(params.get('tab')); }, 150);
 })();
 </script>
 <script>
