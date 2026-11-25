@@ -174,7 +174,8 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="field inline"><input type="checkbox" id="sCam"><label for="sCam" style="margin:0">Start the camera automatically</label></div>
   <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
   <div class="field"><label for="sSheet">Google Sheet link</label><input type="text" id="sSheet" placeholder="Paste the sheet link here" autocomplete="off" inputmode="url">
-    <small>In Google Sheets tap Share and set General access to "Anyone with the link" (Viewer). Row 1 headings: <b>Fabric Code</b> and <b>Tag ID</b>. Set both columns to Format, Number, Plain text.</small></div>
+    <small>In Google Sheets tap Share and set General access to "Anyone with the link" (Viewer). Row 1 headings: <b>Fabric Code</b> and <b>Tag ID</b>. Set both columns to Format, Number, Plain text.</small>
+    <small id="sSheetNote" style="color:var(--accent)"></small></div>
   <div class="field inline"><input type="checkbox" id="sAuto"><label for="sAuto" style="margin:0">Sync automatically when the app opens</label></div>
   <div class="field"><button class="btn small" id="sheetSync" type="button">Save link and sync now</button></div>
   <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
@@ -330,6 +331,9 @@ function sheetUrls(link) {
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var KEY = 'fabricFinder.v1';
+  /* BUILT-IN GOOGLE SHEET: paste your sheet's share link between the quotes below. Every device then syncs from this sheet automatically,
+     with nothing to set up. Leave it empty to set the link on each device in Settings instead. */
+  var BUILT_IN_SHEET = 'https://docs.google.com/spreadsheets/d/1XST5sBnAzpC2Vr3yxClkmUOJ1UcUYwEuiTf3-sNU5OA/edit?gid=1088729316#gid=1088729316';
   var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true, sheetLink: '', autoSync: true, lastSync: 0 };
   var state = { targets: [], settings: Object.assign({}, DEFAULTS), log: [] };
   var nextId = 1, holdUntil = 0, otherUntil = 0, matchTimes = [], lastBeep = 0, lastMatchKey = '', stream = null, audio = null, idleTimer = null, toastTimer = null;
@@ -350,6 +354,7 @@ function sheetUrls(link) {
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function opts() { return state.settings; }
+  function sheetLinkInUse() { return String(state.settings.sheetLink || BUILT_IN_SHEET || '').trim(); }
 
   /* ---------- status / camera banner ---------- */
   function setStatus(kind, icon, title, sub) {
@@ -517,8 +522,8 @@ function sheetUrls(link) {
   var syncing = false, syncMsg = '';
   function timeStr(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function renderSync() {
-    var s = state.settings, n = state.targets.filter(function (x) { return x.src === 'sheet'; }).length, txt;
-    if (!s.sheetLink) { txt = 'Google Sheet: not connected. Tap Connect and paste your sheet link.'; $('syncBtn').textContent = 'Connect'; }
+    var s = state.settings, link = sheetLinkInUse(), n = state.targets.filter(function (x) { return x.src === 'sheet'; }).length, txt;
+    if (!link) { txt = 'Google Sheet: not connected. Tap Connect and paste your sheet link.'; $('syncBtn').textContent = 'Connect'; }
     else { $('syncBtn').textContent = 'Sync now'; txt = syncing ? 'Syncing...' : (syncMsg || (s.lastSync ? 'Synced ' + timeStr(s.lastSync) + ' - ' + n + ' fabric' + (n === 1 ? '' : 's') + ' from the Google Sheet' : 'Not synced yet.')); }
     $('syncText').textContent = txt; $('syncBtn').disabled = syncing; $('syncBar').classList.toggle('bad', /^Could not/.test(txt));
   }
@@ -545,7 +550,7 @@ function sheetUrls(link) {
     throw lastErr || new Error('Could not read the sheet.');
   }
   async function syncSheet(manual) {
-    var link = state.settings.sheetLink;
+    var link = sheetLinkInUse();
     if (!link) { if (manual) openSettings(true); return; }
     if (syncing) return;
     syncing = true; syncMsg = ''; renderSync();
@@ -561,12 +566,13 @@ function sheetUrls(link) {
     syncing = false; renderSync();
   }
   $('syncBtn').addEventListener('click', function () { syncSheet(true); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && state.settings.autoSync && state.settings.sheetLink && Date.now() - (state.settings.lastSync || 0) > 5 * 60 * 1000) syncSheet(false); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && state.settings.autoSync && sheetLinkInUse() && Date.now() - (state.settings.lastSync || 0) > 5 * 60 * 1000) syncSheet(false); });
 
   /* ---------- settings ---------- */
   function openSettings(focusSheet) { fillSettings(); $('testBox').value = ''; $('dlgSettings').showModal(); if (focusSheet) setTimeout(function () { $('sSheet').focus(); }, 60); }
   function fillSettings() {
-    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn; $('sSheet').value = s.sheetLink || ''; $('sAuto').checked = s.autoSync !== false;
+    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn; $('sSheet').value = s.sheetLink || ''; $('sSheet').placeholder = BUILT_IN_SHEET ? 'Leave empty to use the built-in sheet' : 'Paste the sheet link here';
+    $('sSheetNote').textContent = BUILT_IN_SHEET ? (s.sheetLink ? 'This device uses its own sheet link. Clear the box to go back to the built-in sheet.' : 'This app is already linked to your shared Google Sheet. Leave the box empty to use it, or paste a different link for this device only.') : ''; $('sAuto').checked = s.autoSync !== false;
   }
   $('btnSettings').addEventListener('click', function () { openSettings(false); });
   $('sheetSync').addEventListener('click', function () { state.settings.sheetLink = $('sSheet').value.trim(); state.settings.autoSync = $('sAuto').checked; save(); syncSheet(true); });
@@ -574,10 +580,10 @@ function sheetUrls(link) {
     var s = state.settings; s.matchMode = $('sMatch').value; s.ignoreCase = $('sCase').checked; s.stripSpaces = $('sSpaces').checked;
     s.holdSeconds = Math.max(1, Math.min(30, +$('sHold').value || 3)); s.idleMs = Math.max(40, Math.min(1000, +$('sIdle').value || 120));
     s.sound = $('sSound').checked; s.vibrate = $('sVibe').checked; s.cameraOn = $('sCam').checked;
-    var oldLink = s.sheetLink || ''; s.sheetLink = $('sSheet').value.trim(); s.autoSync = $('sAuto').checked;
-    if (!s.sheetLink && oldLink) state.targets.forEach(function (x) { if (x.src === 'sheet') x.src = 'local'; });
+    var oldLink = sheetLinkInUse(); s.sheetLink = $('sSheet').value.trim(); s.autoSync = $('sAuto').checked; var newLink = sheetLinkInUse();
+    if (!newLink && oldLink) state.targets.forEach(function (x) { if (x.src === 'sheet') x.src = 'local'; });
     save(); $('dlgSettings').close(); setTimeout(refocus, 50); renderSync();
-    if (s.sheetLink && s.sheetLink !== oldLink) syncSheet(true);
+    if (newLink && newLink !== oldLink) syncSheet(true);
   });
   $('testGo').addEventListener('click', function () { var v = $('testBox').value; if (v.trim()) { $('dlgSettings').close(); handleScan(v, 'test'); $('testBox').value = ''; } });
   $('testBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('testGo').click(); } });
@@ -604,7 +610,7 @@ function sheetUrls(link) {
   renderLists(); idleStatus(); renderSync(); setInterval(tick, 150);
   if (state.settings.cameraOn && params.get('nocam') !== '1') startCam();
   setTimeout(refocus, 100);
-  if (state.settings.sheetLink && state.settings.autoSync) setTimeout(function () { syncSheet(false); }, 400);
+  if (sheetLinkInUse() && state.settings.autoSync) setTimeout(function () { syncSheet(false); }, 400);
   if (params.get('sim')) setTimeout(function () { handleScan(params.get('sim'), 'test'); }, 150);
 })();
 </script>
