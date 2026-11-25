@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Fabric Finder</title>
+<style>
+:root{
+  --bg:#f3f6f4; --card:#ffffff; --ink:#14201a; --muted:#5b6b62; --line:#d6dfda;
+  --ok:#15803d; --ok-bg:#dcfce7; --warn:#a16207; --warn-bg:#fef3c7; --idle:#475569; --idle-bg:#e7edf2;
+  --accent:#0f766e; --danger:#b91c1c; --shadow:0 1px 2px rgba(20,32,26,.08),0 4px 14px rgba(20,32,26,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0e1612; --card:#16211b; --ink:#e8f1ec; --muted:#9db2a7; --line:#2a3a31;
+    --ok:#4ade80; --ok-bg:#12351f; --warn:#fbbf24; --warn-bg:#3a2d0b; --idle:#cbd5e1; --idle-bg:#1f2a24;
+    --accent:#2dd4bf; --danger:#f87171; --shadow:none; }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.app{max-width:560px;margin:0 auto;padding:12px 14px calc(86px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.brand{display:flex;align-items:center;gap:8px}
+.brand h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px}
+.logo{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;font-weight:700}
+.chip{font-size:12px;padding:5px 10px;border-radius:99px;background:var(--idle-bg);color:var(--idle);white-space:nowrap}
+.chip.live{background:var(--ok-bg);color:var(--ok)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:10px}
+.cam{position:relative;overflow:hidden;aspect-ratio:4/3;max-height:36vh;width:100%;background:#0b110e;display:flex;align-items:center;justify-content:center}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam .cam-off{position:relative;color:#9db2a7;font-size:13px;padding:0 20px;text-align:center}
+.cam.match{outline:5px solid var(--ok);outline-offset:-5px;animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{outline-color:transparent}}
+.cam-banner{position:absolute;left:10px;right:10px;bottom:10px;padding:10px 12px;border-radius:10px;background:rgba(21,128,61,.94);color:#fff;font-weight:700;font-size:18px;text-align:center}
+.cam-btn{position:absolute;top:8px;right:8px;border:0;border-radius:8px;padding:7px 10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px}
+.status{display:flex;align-items:center;gap:14px;padding:16px;min-height:96px}
+.status-icon{flex:none;width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-size:28px;font-weight:700}
+.status-title{font-size:21px;font-weight:800;line-height:1.15;word-break:break-word}
+.status-sub{color:var(--muted);font-size:14px;margin-top:2px;word-break:break-word}
+.status.idle{background:var(--idle-bg);border-color:transparent}.status.idle .status-icon{background:var(--card);color:var(--idle)}
+.status.other{background:var(--warn-bg);border-color:transparent}.status.other .status-icon{background:var(--card);color:var(--warn)}.status.other .status-title{color:var(--warn)}
+.status.match{background:var(--ok-bg);border-color:var(--ok)}.status.match .status-icon{background:var(--ok);color:#fff}.status.match .status-title{color:var(--ok);font-size:24px}
+.meter{padding:12px 14px}
+.meter-head{display:flex;justify-content:space-between;font-weight:600;margin-bottom:6px;font-size:14px}
+.bar{height:14px;border-radius:99px;background:var(--idle-bg);overflow:hidden}
+#barFill{height:100%;width:0;border-radius:99px;background:var(--ok);transition:width .15s}
+.hint{color:var(--muted);font-size:12px;margin-top:6px}
+.tabs{display:flex;gap:8px;margin:14px 0 8px}
+.tab{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:11px;font-weight:600;font-size:14px}
+.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.toolbar{display:flex;gap:8px;margin-bottom:8px}
+input[type=search],input[type=text],input[type=number],select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;background:var(--card);color:var(--ink)}
+button{font:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:10px 14px;font-weight:600;min-height:44px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--danger)}
+.btn.small{min-height:40px;padding:8px 12px;white-space:nowrap}
+.list{list-style:none;margin:0;padding:0}
+.row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--accent)}
+.row .main{flex:1;min-width:0}
+.row .code{font-weight:700;word-break:break-word}
+.row .sub{color:var(--muted);font-size:12px;word-break:break-all}
+.found{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--idle-bg);color:var(--muted);white-space:nowrap}
+.found.yes{background:var(--ok-bg);color:var(--ok)}
+.row.match-row{background:var(--ok-bg)}
+.empty{padding:26px 16px;text-align:center;color:var(--muted)}
+.dock{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);max-width:560px;margin:0 auto}
+.dock .btn{flex:1}
+dialog{border:1px solid var(--line);border-radius:16px;padding:0;width:min(92vw,460px);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg{padding:16px}.dlg h2{margin:0 0 10px;font-size:18px}
+.field{margin:10px 0}.field label{display:block;font-weight:600;margin-bottom:4px;font-size:14px}
+.field small{display:block;color:var(--muted);margin-top:3px}
+.inline{display:flex;align-items:center;gap:10px}.inline input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.sink{position:fixed;left:-50px;top:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0}
+.toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#14201a;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;max-width:90vw;z-index:50}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="logo">F</span><h1>Fabric Finder</h1></div>
+    <div class="chip" id="inputChip">Scanner: waiting</div>
+  </header>
+
+  <section class="card cam" id="camCard">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="cam-off" id="camOff">Camera is off</div>
+    <div class="cam-banner" id="camBanner" hidden></div>
+    <button class="cam-btn" id="camToggle" type="button">Turn camera on</button>
+  </section>
+
+  <section class="card status idle" id="status" aria-live="polite">
+    <div class="status-icon" id="statusIcon">&#9679;</div>
+    <div>
+      <div class="status-title" id="statusTitle">Ready</div>
+      <div class="status-sub" id="statusSub">Upload your fabric codes, then pull the scanner trigger over the fabric set.</div>
+    </div>
+  </section>
+
+  <section class="card meter">
+    <div class="meter-head"><span>Read activity</span><span id="meterNum">0 reads</span></div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="hint">Fills up as the matching tag is read more often. Move the scanner closer to the swatch to confirm.</div>
+  </section>
+
+  <nav class="tabs">
+    <button class="tab on" type="button" data-tab="fabrics">Fabrics <span id="fabCount"></span></button>
+    <button class="tab" type="button" data-tab="scans">Scans <span id="scanCount"></span></button>
+  </nav>
+
+  <section id="tab-fabrics">
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search fabric code" autocomplete="off">
+      <button class="btn small" id="selAll" type="button">All</button>
+      <button class="btn small" id="selNone" type="button">None</button>
+    </div>
+    <div class="card"><ul class="list" id="fabList"></ul></div>
+    <div class="actions" style="justify-content:space-between">
+      <span class="hint" id="activeNote"></span>
+      <button class="btn small danger" id="clearList" type="button">Clear list</button>
+    </div>
+  </section>
+
+  <section id="tab-scans" hidden>
+    <div class="card"><ul class="list" id="scanList"></ul></div>
+    <div class="actions">
+      <button class="btn small" id="exportLog" type="button">Export log (CSV)</button>
+      <button class="btn small danger" id="clearLog" type="button">Clear log</button>
+    </div>
+  </section>
+</div>
+
+<footer class="dock">
+  <button class="btn primary" id="btnUpload" type="button">Upload file</button>
+  <button class="btn" id="btnPaste" type="button">Paste codes</button>
+  <button class="btn" id="btnSettings" type="button">Settings</button>
+</footer>
+
+<input type="file" id="file" accept=".csv,.txt,.tsv,.xlsx" hidden>
+<input class="sink" id="sink" inputmode="none" autocomplete="off" autocapitalize="off" spellcheck="false" aria-hidden="true">
+
+<dialog id="dlgPaste"><div class="dlg">
+  <h2>Paste fabric codes</h2>
+  <div class="field"><label for="pasteBox">One per line</label>
+    <textarea id="pasteBox" rows="8" placeholder="FAB-1001&#10;FAB-1002&#10;or: fabric code, tag ID"></textarea>
+    <small>Optional second column = the tag ID (EPC) if it differs from the fabric code.</small></div>
+  <div class="actions"><button class="btn" id="pasteCancel" type="button">Cancel</button><button class="btn primary" id="pasteOk" type="button">Add to list</button></div>
+</div></dialog>
+
+<dialog id="dlgSettings"><div class="dlg">
+  <h2>Settings</h2>
+  <div class="field"><label for="sMatch">Matching</label>
+    <select id="sMatch"><option value="contains">Tag or code CONTAINS the fabric code (recommended)</option><option value="exact">Exact match only</option></select></div>
+  <div class="field inline"><input type="checkbox" id="sCase"><label for="sCase" style="margin:0">Ignore upper / lower case</label></div>
+  <div class="field inline"><input type="checkbox" id="sSpaces"><label for="sSpaces" style="margin:0">Ignore spaces in scanned values</label></div>
+  <div class="field"><label for="sHold">Keep the green indicator for (seconds)</label><input type="number" id="sHold" min="1" max="30" step="1"></div>
+  <div class="field"><label for="sIdle">End of scan pause (milliseconds)</label><input type="number" id="sIdle" min="40" max="1000" step="10">
+    <small>Used when the scanner does not send an Enter key after each tag.</small></div>
+  <div class="field inline"><input type="checkbox" id="sSound"><label for="sSound" style="margin:0">Beep on match</label></div>
+  <div class="field inline"><input type="checkbox" id="sVibe"><label for="sVibe" style="margin:0">Vibrate on match</label></div>
+  <div class="field inline"><input type="checkbox" id="sCam"><label for="sCam" style="margin:0">Start the camera automatically</label></div>
+  <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+  <div class="field"><label for="testBox">Test without the scanner</label>
+    <div class="toolbar"><input type="text" id="testBox" placeholder="Type a tag ID or fabric code"><button class="btn small" id="testGo" type="button">Scan</button></div></div>
+  <div class="actions"><button class="btn primary" id="setClose" type="button">Done</button></div>
+</div></dialog>
+
+<script>
+/* ================= CORE (pure functions, also unit-tested) ================= */
+/*CORE-START*/
+function normalizeValue(s, o) {
+  s = String(s == null ? '' : s);
+  s = s.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if (o.stripSpaces) s = s.replace(/\s+/g, '');
+  if (o.ignoreCase) s = s.toUpperCase();
+  return s;
+}
+function hexToAscii(h) {
+  if (!/^[0-9A-Fa-f]+$/.test(h) || h.length % 2) return '';
+  var out = '';
+  for (var i = 0; i < h.length; i += 2) {
+    var c = parseInt(h.substr(i, 2), 16);
+    if (c === 0) continue;
+    if (c < 32 || c > 126) return '';
+    out += String.fromCharCode(c);
+  }
+  return out;
+}
+function scanVariants(raw, o) {
+  var base = normalizeValue(raw, o), v = [base];
+  var noPrefix = base.replace(/^0X/i, '');
+  if (noPrefix !== base) v.push(noPrefix);
+  var dec = hexToAscii(noPrefix);
+  if (dec.length >= 3) v.push(normalizeValue(dec, o));
+  return v.filter(function (x, i) { return x && v.indexOf(x) === i; });
+}
+function matchScan(raw, targets, o) {
+  var vars = scanVariants(raw, o), hits = [];
+  for (var i = 0; i < targets.length; i++) {
+    var t = targets[i], code = normalizeValue(t.code, o), tag = normalizeValue(t.tag || '', o), ok = false;
+    for (var j = 0; j < vars.length; j++) {
+      var v = vars[j];
+      if (tag && (v === tag || (o.matchMode === 'contains' && v.indexOf(tag) >= 0))) ok = true;
+      if (code && (v === code || (o.matchMode === 'contains' && v.indexOf(code) >= 0))) ok = true;
+    }
+    if (ok) hits.push(t);
+  }
+  return hits;
+}
+function parseDelimited(text) {
+  text = String(text).replace(/^﻿/, '');
+  var first = text.split(/\r?\n/)[0] || '';
+  var delim = first.indexOf('\t') >= 0 ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+  var rows = [], row = [], cur = '', q = false;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; rows.push(row); row = []; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); });
+}
+function rowsToTargets(rows) {
+  if (!rows.length) return [];
+  var head = rows[0].map(function (c) { return String(c).trim().toLowerCase(); });
+  var codeRe = /^(fabric( code)?|fabric_code|code|style|sku|article|item)$/, tagRe = /^(tag( id)?|tag_id|epc|rfid( tag)?|tid|rfid)$/, anyRe = /^(fabric( code)?|fabric_code|code|style|sku|article|item|name|description|tag( id)?|tag_id|epc|rfid( tag)?|tid|rfid|id)$/;
+  var hasHeader = head.some(function (h) { return anyRe.test(h); });
+  var codeIdx = 0, tagIdx = -1;
+  if (hasHeader) {
+    var ci = head.findIndex(function (h) { return codeRe.test(h); }), ti = head.findIndex(function (h) { return tagRe.test(h); });
+    codeIdx = ci >= 0 ? ci : (ti === 0 ? 1 : 0); tagIdx = ti;
+  } else if (rows.some(function (r) { return r.length > 1 && String(r[1]).trim() !== ''; })) tagIdx = 1;
+  var seen = {}, out = [];
+  rows.slice(hasHeader ? 1 : 0).forEach(function (r) {
+    var code = String(r[codeIdx] == null ? '' : r[codeIdx]).trim(), tag = tagIdx >= 0 ? String(r[tagIdx] == null ? '' : r[tagIdx]).trim() : '';
+    if (!code && tag) code = tag;
+    if (!code) return;
+    var k = code + '|' + tag;
+    if (seen[k]) return; seen[k] = 1;
+    out.push({ code: code, tag: tag });
+  });
+  return out;
+}
+function xmlUnescape(s) { return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'); }
+async function inflateRaw(u8) {
+  var ds = new DecompressionStream('deflate-raw');
+  var s = new Blob([u8]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function readZip(buf) {
+  var u8 = new Uint8Array(buf), dv = new DataView(buf), eocd = -1;
+  for (var i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+  if (eocd < 0) throw new Error('This does not look like a valid .xlsx file');
+  var n = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), files = {}, dec = new TextDecoder();
+  for (var k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    var method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    files[dec.decode(u8.subarray(p + 46, p + 46 + nlen))] = { method: method, csize: csize, off: off };
+    p += 46 + nlen + elen + clen;
+  }
+  return { files: files, u8: u8, dv: dv };
+}
+async function zipRead(z, name) {
+  var f = z.files[name]; if (!f) return null;
+  var ln = z.dv.getUint16(f.off + 26, true), le = z.dv.getUint16(f.off + 28, true), start = f.off + 30 + ln + le;
+  var data = z.u8.subarray(start, start + f.csize);
+  var raw = f.method === 0 ? data : await inflateRaw(data);
+  return new TextDecoder().decode(raw);
+}
+async function readXlsxRows(buf) {
+  var z = await readZip(buf), sst = await zipRead(z, 'xl/sharedStrings.xml'), ss = [];
+  if (sst) { var re = /<si>([\s\S]*?)<\/si>/g, m; while ((m = re.exec(sst))) { var t = '', r2 = /<t[^>]*>([\s\S]*?)<\/t>/g, x; while ((x = r2.exec(m[1]))) t += x[1]; ss.push(xmlUnescape(t)); } }
+  var names = Object.keys(z.files).filter(function (n) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(n); }).sort(function (a, b) { return parseInt(a.match(/(\d+)\.xml/)[1], 10) - parseInt(b.match(/(\d+)\.xml/)[1], 10); });
+  if (!names.length) throw new Error('No worksheet found in the file');
+  var xml = await zipRead(z, names[0]), rows = [], rr = /<row\b[^>]*>([\s\S]*?)<\/row>/g, rm;
+  while ((rm = rr.exec(xml))) {
+    var cells = [], cr = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, cm;
+    while ((cm = cr.exec(rm[1]))) {
+      var attrs = cm[1], ref = (attrs.match(/\br="([A-Z]+)\d+"/) || [])[1]; if (!ref) continue;
+      var ci = 0; for (var q = 0; q < ref.length; q++) ci = ci * 26 + ref.charCodeAt(q) - 64; ci--;
+      var ty = (attrs.match(/\bt="(\w+)"/) || [])[1], body = cm[2] || '', val = '';
+      if (ty === 's') { var v1 = body.match(/<v>([\s\S]*?)<\/v>/); val = v1 ? (ss[+v1[1]] || '') : ''; }
+      else if (ty === 'inlineStr') { var s2 = '', r3 = /<t[^>]*>([\s\S]*?)<\/t>/g, y; while ((y = r3.exec(body))) s2 += y[1]; val = xmlUnescape(s2); }
+      else { var v2 = body.match(/<v>([\s\S]*?)<\/v>/); val = v2 ? xmlUnescape(v2[1]) : ''; }
+      cells[ci] = val;
+    }
+    rows.push(Array.from(cells, function (c) { return c == null ? '' : c; }));
+  }
+  return rows.filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); });
+}
+/*CORE-END*/
+
+/* ================= APP ================= */
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'fabricFinder.v1';
+  var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true };
+  var state = { targets: [], settings: Object.assign({}, DEFAULTS), log: [] };
+  var nextId = 1, holdUntil = 0, otherUntil = 0, matchTimes = [], lastBeep = 0, lastMatchKey = '', stream = null, audio = null, idleTimer = null, toastTimer = null;
+
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (s) { state.targets = (s.targets || []).map(function (t) { return { id: nextId++, code: t.code, tag: t.tag || '', active: t.active !== false, found: 0, last: 0 }; }); state.settings = Object.assign({}, DEFAULTS, s.settings || {}); }
+    } catch (e) { }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ settings: state.settings, targets: state.targets.map(function (t) { return { code: t.code, tag: t.tag, active: t.active }; }) })); } catch (e) { }
+  }
+  function toast(msg) {
+    var old = document.querySelector('.toast'); if (old) old.remove();
+    var d = document.createElement('div'); d.className = 'toast'; d.textContent = msg; document.body.appendChild(d);
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { d.remove(); }, 3200);
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function opts() { return state.settings; }
+
+  /* ---------- status / camera banner ---------- */
+  function setStatus(kind, icon, title, sub) {
+    $('status').className = 'card status ' + kind;
+    $('statusIcon').textContent = icon; $('statusTitle').textContent = title; $('statusSub').textContent = sub;
+    $('camCard').classList.toggle('match', kind === 'match');
+  }
+  function idleStatus() {
+    var n = state.targets.filter(function (t) { return t.active; }).length;
+    if (!state.targets.length) setStatus('idle', '●', 'No fabrics yet', 'Upload a file or paste fabric codes to begin.');
+    else if (!n) setStatus('idle', '●', 'Nothing selected', 'Tick at least one fabric in the list to look for it.');
+    else setStatus('idle', '●', 'Looking for ' + n + ' fabric' + (n === 1 ? '' : 's'), 'Pull the scanner trigger over the fabric set.');
+    $('camBanner').hidden = true;
+  }
+  function showMatch(hits) {
+    var title = hits.length === 1 ? hits[0].code : hits.length + ' fabrics match';
+    var sub = hits.length === 1 ? 'MATCH - this is the fabric you are looking for' : hits.slice(0, 4).map(function (h) { return h.code; }).join(', ') + (hits.length > 4 ? '...' : '');
+    setStatus('match', '✓', 'MATCH: ' + title, sub);
+    $('camBanner').textContent = '✓ MATCH  ' + title; $('camBanner').hidden = false;
+  }
+  function showOther(value) {
+    setStatus('other', '!', 'Not a match', 'Scanned: ' + (value.length > 40 ? value.slice(0, 40) + '...' : value));
+    $('camBanner').hidden = true;
+  }
+
+  /* ---------- feedback ---------- */
+  function beep() {
+    if (!state.settings.sound) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      var o = audio.createOscillator(), g = audio.createGain(); o.type = 'sine'; o.frequency.value = 1040;
+      g.gain.setValueAtTime(0.0001, audio.currentTime); g.gain.exponentialRampToValueAtTime(0.4, audio.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.28);
+      o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.3);
+    } catch (e) { }
+  }
+  function vibe() { if (state.settings.vibrate && navigator.vibrate) { try { navigator.vibrate([90, 60, 90]); } catch (e) { } } }
+
+  /* ---------- scan handling ---------- */
+  function handleScan(raw, source) {
+    var value = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+    if (!value) return;
+    var now = Date.now();
+    var hits = matchScan(value, state.targets.filter(function (t) { return t.active; }), opts());
+    var last = state.log[0];
+    if (last && last.value === value && now - last.t < 2000) { last.n++; last.t = now; }
+    else { state.log.unshift({ t: now, value: value, hits: hits.map(function (h) { return h.code; }), n: 1, source: source || 'scanner' }); if (state.log.length > 200) state.log.pop(); }
+    if (hits.length) {
+      hits.forEach(function (h) { h.found++; h.last = now; });
+      matchTimes.push(now);
+      holdUntil = now + state.settings.holdSeconds * 1000; otherUntil = 0;
+      var key = hits.map(function (h) { return h.id; }).join(',');
+      showMatch(hits);
+      if (key !== lastMatchKey || now - lastBeep > 1500) { beep(); vibe(); lastBeep = now; }
+      lastMatchKey = key;
+    } else {
+      otherUntil = now + 1500;
+      if (now > holdUntil) showOther(value);
+    }
+    renderLists(); updateMeter();
+  }
+  function tick() {
+    var now = Date.now();
+    if (holdUntil && now > holdUntil) { holdUntil = 0; lastMatchKey = ''; idleStatus(); renderLists(); }
+    else if (!holdUntil && otherUntil && now > otherUntil) { otherUntil = 0; idleStatus(); }
+    updateMeter();
+  }
+  function updateMeter() {
+    var now = Date.now(); matchTimes = matchTimes.filter(function (t) { return now - t < 2000; });
+    var n = matchTimes.length;
+    $('barFill').style.width = Math.min(100, Math.round(n / 6 * 100)) + '%';
+    $('meterNum').textContent = n + ' read' + (n === 1 ? '' : 's') + ' in 2 s';
+  }
+
+  /* ---------- scanner input (keyboard-wedge) ---------- */
+  var sink = $('sink');
+  function commitSink() {
+    clearTimeout(idleTimer);
+    var v = sink.value; sink.value = '';
+    if (v.trim()) handleScan(v, 'scanner');
+  }
+  sink.addEventListener('input', function () { clearTimeout(idleTimer); idleTimer = setTimeout(commitSink, state.settings.idleMs); chipLive(); });
+  sink.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commitSink(); } });
+  function chipLive() { var c = $('inputChip'); c.textContent = 'Scanner: receiving'; c.classList.add('live'); clearTimeout(chipLive.t); chipLive.t = setTimeout(function () { c.textContent = 'Scanner: ready'; }, 2500); }
+  function refocus() {
+    var a = document.activeElement, tag = a && a.tagName;
+    if (document.querySelector('dialog[open]')) return;
+    if (tag === 'INPUT' && a !== sink || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    sink.focus({ preventScroll: true });
+  }
+  document.addEventListener('keydown', function (e) {
+    var a = document.activeElement, tag = a && a.tagName;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && a !== sink)) return;
+    if (document.querySelector('dialog[open]')) return;
+    if (a !== sink && e.key && e.key.length === 1) sink.focus({ preventScroll: true });
+  }, true);
+  document.addEventListener('pointerup', function () { setTimeout(refocus, 60); $('inputChip').textContent = 'Scanner: ready'; if (audio && audio.state === 'suspended') audio.resume(); });
+  window.addEventListener('focus', refocus);
+  setInterval(function () { refocus(); }, 2000);
+
+  /* ---------- lists ---------- */
+  function renderLists() {
+    var q = $('search').value.trim().toLowerCase(), ul = $('fabList'), act = state.targets.filter(function (t) { return t.active; }).length;
+    var rows = state.targets.filter(function (t) { return !q || t.code.toLowerCase().indexOf(q) >= 0 || (t.tag || '').toLowerCase().indexOf(q) >= 0; });
+    $('fabCount').textContent = state.targets.length ? '(' + state.targets.length + ')' : '';
+    $('activeNote').textContent = state.targets.length ? act + ' of ' + state.targets.length + ' selected' : '';
+    if (!rows.length) { ul.innerHTML = '<li class="empty">' + (state.targets.length ? 'No fabric matches your search.' : 'No fabrics yet.<br>Tap <b>Upload file</b> (CSV or Excel) or <b>Paste codes</b>.') + '</li>'; }
+    else ul.innerHTML = rows.map(function (t) {
+      var recent = holdUntil && Date.now() - t.last < state.settings.holdSeconds * 1000;
+      return '<li class="row' + (recent ? ' match-row' : '') + '"><input type="checkbox" data-id="' + t.id + '"' + (t.active ? ' checked' : '') + ' aria-label="Look for ' + esc(t.code) + '"><div class="main"><div class="code">' + esc(t.code) + '</div>' + (t.tag ? '<div class="sub">Tag: ' + esc(t.tag) + '</div>' : '') + '</div><span class="found' + (t.found ? ' yes' : '') + '">' + (t.found ? 'Found x' + t.found : 'Not seen') + '</span></li>';
+    }).join('');
+    $('scanCount').textContent = state.log.length ? '(' + state.log.length + ')' : '';
+    $('scanList').innerHTML = state.log.length ? state.log.slice(0, 60).map(function (l) {
+      var d = new Date(l.t), tm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return '<li class="row"><div class="main"><div class="code">' + esc(l.value.length > 36 ? l.value.slice(0, 36) + '...' : l.value) + (l.n > 1 ? ' <span class="sub">x' + l.n + '</span>' : '') + '</div><div class="sub">' + tm + (l.hits.length ? ' - matched ' + esc(l.hits.join(', ')) : '') + '</div></div><span class="found' + (l.hits.length ? ' yes' : '') + '">' + (l.hits.length ? 'Match' : 'Other') + '</span></li>';
+    }).join('') : '<li class="empty">No scans yet.</li>';
+    if (!holdUntil && !otherUntil) idleStatus();
+  }
+
+  /* ---------- importing ---------- */
+  function addTargets(list, replace) {
+    if (replace) state.targets = [];
+    var have = {}; state.targets.forEach(function (t) { have[t.code + '|' + t.tag] = 1; });
+    var added = 0;
+    list.forEach(function (t) { var k = t.code + '|' + t.tag; if (have[k]) return; have[k] = 1; state.targets.push({ id: nextId++, code: t.code, tag: t.tag || '', active: true, found: 0, last: 0 }); added++; });
+    save(); renderLists(); idleStatus();
+    toast(added + ' fabric' + (added === 1 ? '' : 's') + ' ' + (replace ? 'loaded' : 'added') + '.');
+  }
+  function afterParse(list) {
+    if (!list.length) { toast('No fabric codes found in that file.'); return; }
+    if (state.targets.length && confirm('Replace the current list (' + state.targets.length + ' fabrics) with the ' + list.length + ' from this file?\n\nOK = replace   Cancel = add to the current list')) addTargets(list, true);
+    else addTargets(list, false);
+  }
+  $('btnUpload').addEventListener('click', function () { $('file').value = ''; $('file').click(); });
+  $('file').addEventListener('change', async function () {
+    var f = this.files[0]; if (!f) return;
+    try {
+      var rows = /\.xlsx$/i.test(f.name) ? await readXlsxRows(await f.arrayBuffer()) : parseDelimited(await f.text());
+      afterParse(rowsToTargets(rows));
+    } catch (e) { toast('Could not read that file: ' + e.message); }
+  });
+  $('btnPaste').addEventListener('click', function () { $('pasteBox').value = ''; $('dlgPaste').showModal(); });
+  $('pasteCancel').addEventListener('click', function () { $('dlgPaste').close(); setTimeout(refocus, 50); });
+  $('pasteOk').addEventListener('click', function () { var list = rowsToTargets(parseDelimited($('pasteBox').value)); $('dlgPaste').close(); afterParse(list); setTimeout(refocus, 50); });
+  $('search').addEventListener('input', renderLists);
+  $('fabList').addEventListener('change', function (e) { var id = +e.target.getAttribute('data-id'); var t = state.targets.find(function (x) { return x.id === id; }); if (t) { t.active = e.target.checked; save(); renderLists(); idleStatus(); } });
+  $('selAll').addEventListener('click', function () { state.targets.forEach(function (t) { t.active = true; }); save(); renderLists(); idleStatus(); });
+  $('selNone').addEventListener('click', function () { state.targets.forEach(function (t) { t.active = false; }); save(); renderLists(); idleStatus(); });
+  $('clearList').addEventListener('click', function () { if (state.targets.length && confirm('Remove all ' + state.targets.length + ' fabrics from the list?')) { state.targets = []; save(); renderLists(); idleStatus(); } });
+  $('clearLog').addEventListener('click', function () { state.log = []; renderLists(); });
+  $('exportLog').addEventListener('click', function () {
+    var lines = ['time,scanned value,result,matched fabric codes,reads'];
+    state.log.slice().reverse().forEach(function (l) { lines.push([new Date(l.t).toISOString(), '"' + l.value.replace(/"/g, '""') + '"', l.hits.length ? 'MATCH' : 'other', '"' + l.hits.join(' ') + '"', l.n].join(',')); });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'fabric-finder-log.csv'; a.click();
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.toggle('on', x === b); });
+      $('tab-fabrics').hidden = b.getAttribute('data-tab') !== 'fabrics'; $('tab-scans').hidden = b.getAttribute('data-tab') !== 'scans';
+    });
+  });
+
+  /* ---------- settings ---------- */
+  function fillSettings() {
+    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn;
+  }
+  $('btnSettings').addEventListener('click', function () { fillSettings(); $('testBox').value = ''; $('dlgSettings').showModal(); });
+  $('setClose').addEventListener('click', function () {
+    var s = state.settings; s.matchMode = $('sMatch').value; s.ignoreCase = $('sCase').checked; s.stripSpaces = $('sSpaces').checked;
+    s.holdSeconds = Math.max(1, Math.min(30, +$('sHold').value || 3)); s.idleMs = Math.max(40, Math.min(1000, +$('sIdle').value || 120));
+    s.sound = $('sSound').checked; s.vibrate = $('sVibe').checked; s.cameraOn = $('sCam').checked; save(); $('dlgSettings').close(); setTimeout(refocus, 50);
+  });
+  $('testGo').addEventListener('click', function () { var v = $('testBox').value; if (v.trim()) { $('dlgSettings').close(); handleScan(v, 'test'); $('testBox').value = ''; } });
+  $('testBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('testGo').click(); } });
+
+  /* ---------- camera ---------- */
+  function camUi(on, msg) { $('camToggle').textContent = on ? 'Turn camera off' : 'Turn camera on'; $('camOff').hidden = on; if (!on) $('camOff').textContent = msg || 'Camera is off'; $('video').style.display = on ? 'block' : 'none'; }
+  async function startCam() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camUi(false, 'Camera needs a secure (https) page. Open this page from its https address.'); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      $('video').srcObject = stream; camUi(true);
+    } catch (e) { stream = null; camUi(false, e && e.name === 'NotAllowedError' ? 'Camera permission was blocked. Allow it in the browser settings, then tap Turn camera on.' : 'Camera unavailable: ' + (e && e.message ? e.message : e)); }
+  }
+  function stopCam() { if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } $('video').srcObject = null; camUi(false); }
+  $('camToggle').addEventListener('click', function () { if (stream) { stopCam(); } else startCam(); });
+
+  /* ---------- start ---------- */
+  load();
+  var params = new URLSearchParams(location.search);
+  if (params.get('demo') === '1' && !state.targets.length) {
+    state.targets = ['FAB-1001', 'FAB-1002', 'FAB-1003', 'LINEN-WHITE-07', 'OXFORD-BLUE-12', 'CORD-BROWN-03'].map(function (c) { return { id: nextId++, code: c, tag: '', active: true, found: 0, last: 0 }; });
+  }
+  camUi(false, 'Camera is off');
+  renderLists(); idleStatus(); setInterval(tick, 150);
+  if (state.settings.cameraOn && params.get('nocam') !== '1') startCam();
+  setTimeout(refocus, 100);
+  if (params.get('sim')) setTimeout(function () { handleScan(params.get('sim'), 'test'); }, 150);
+})();
+</script>
+<script>
+/* Lets Chrome install the page as an app and open it again with no connection. Only runs on https. */
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
+}
+</script>
+</body>
+</html>
