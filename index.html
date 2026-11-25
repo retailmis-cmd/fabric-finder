@@ -83,7 +83,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .field small{display:block;color:var(--muted);margin-top:3px}
 .inline{display:flex;align-items:center;gap:10px}.inline input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-.sink{position:fixed;left:-50px;top:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0}
+.scanbox{padding:10px 12px}
+.scanbox label{display:block;font-weight:600;font-size:13px;margin-bottom:5px}
+.scanbox.ready input{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.scan-note{color:var(--muted);font-size:12px;margin-top:5px;word-break:break-all}
 .toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#14201a;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;max-width:90vw;z-index:50}
 </style>
 </head>
@@ -107,6 +110,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <div class="status-title" id="statusTitle">Ready</div>
       <div class="status-sub" id="statusSub">Upload your fabric codes, then pull the scanner trigger over the fabric set.</div>
     </div>
+  </section>
+
+  <section class="card scanbox" id="scanBox">
+    <label for="sink">Scanner input</label>
+    <input id="sink" type="text" virtualkeyboardpolicy="manual" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Tap here once, then pull the trigger">
+    <div class="scan-note" id="scanNote">Key presses received: 0</div>
   </section>
 
   <section class="card meter">
@@ -150,7 +159,6 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </footer>
 
 <input type="file" id="file" accept=".csv,.txt,.tsv,.xlsx" hidden>
-<input class="sink" id="sink" inputmode="none" autocomplete="off" autocapitalize="off" spellcheck="false" aria-hidden="true">
 
 <dialog id="dlgPaste"><div class="dlg">
   <h2>Paste fabric codes</h2>
@@ -430,29 +438,42 @@ function sheetUrls(link) {
   }
 
   /* ---------- scanner input (keyboard-wedge) ---------- */
-  var sink = $('sink');
+  var sink = $('sink'), diag = { keys: 0, inputs: 0, last: '' }, kbuf = '', kTimer = null;
+  var canAutoFocus = !!navigator.virtualKeyboard; /* without this, focusing the box would pop up the on-screen keyboard; then the user just taps the box once */
+  function scanNote() { $('scanNote').textContent = 'Key presses received: ' + diag.keys + (diag.last ? '   Last read: ' + (diag.last.length > 34 ? diag.last.slice(0, 34) + '...' : diag.last) : ''); }
   function commitSink() {
     clearTimeout(idleTimer);
     var v = sink.value; sink.value = '';
-    if (v.trim()) handleScan(v, 'scanner');
+    if (v.trim()) { diag.last = v.trim(); scanNote(); handleScan(v, 'scanner'); }
   }
-  sink.addEventListener('input', function () { clearTimeout(idleTimer); idleTimer = setTimeout(commitSink, state.settings.idleMs); chipLive(); });
+  function kbufCommit() {
+    clearTimeout(kTimer);
+    var v = kbuf; kbuf = '';
+    if (v.trim()) { diag.last = v.trim(); scanNote(); handleScan(v, 'scanner'); }
+  }
+  sink.addEventListener('input', function () { diag.inputs++; clearTimeout(idleTimer); idleTimer = setTimeout(commitSink, state.settings.idleMs); chipLive(); });
   sink.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commitSink(); } });
+  sink.addEventListener('focus', function () { $('scanBox').classList.add('ready'); });
+  sink.addEventListener('blur', function () { $('scanBox').classList.remove('ready'); });
   function chipLive() { var c = $('inputChip'); c.textContent = 'Scanner: receiving'; c.classList.add('live'); clearTimeout(chipLive.t); chipLive.t = setTimeout(function () { c.textContent = 'Scanner: ready'; }, 2500); }
   function refocus() {
+    if (!canAutoFocus) return;
     var a = document.activeElement, tag = a && a.tagName;
     if (document.querySelector('dialog[open]')) return;
     if (tag === 'INPUT' && a !== sink || tag === 'TEXTAREA' || tag === 'SELECT') return;
     sink.focus({ preventScroll: true });
   }
+  /* Second way in: if the scanner types while no box is focused, collect the keys here and treat them as one scan. */
   document.addEventListener('keydown', function (e) {
-    var a = document.activeElement, tag = a && a.tagName;
+    diag.keys++; scanNote();
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && a !== sink)) return;
+    var a = document.activeElement, tag = a && a.tagName;
+    if (a === sink || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'INPUT') return;
     if (document.querySelector('dialog[open]')) return;
-    if (a !== sink && e.key && e.key.length === 1) sink.focus({ preventScroll: true });
+    if (e.key === 'Enter' || e.key === 'Tab') { if (kbuf) { e.preventDefault(); kbufCommit(); } return; }
+    if (e.key && e.key.length === 1) { kbuf += e.key; chipLive(); clearTimeout(kTimer); kTimer = setTimeout(kbufCommit, state.settings.idleMs); }
   }, true);
-  document.addEventListener('pointerup', function () { setTimeout(refocus, 60); $('inputChip').textContent = 'Scanner: ready'; if (audio && audio.state === 'suspended') audio.resume(); });
+  document.addEventListener('pointerup', function () { setTimeout(refocus, 60); if (audio && audio.state === 'suspended') audio.resume(); });
   window.addEventListener('focus', refocus);
   setInterval(function () { refocus(); }, 2000);
 

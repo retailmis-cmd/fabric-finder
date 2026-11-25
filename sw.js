@@ -1,5 +1,5 @@
 /* Fabric Finder service worker: always tries the network first so updates appear straight away, and falls back to the saved copy when there is no connection. */
-var CACHE = 'fabric-finder-v3';
+var CACHE = 'fabric-finder-v4';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
