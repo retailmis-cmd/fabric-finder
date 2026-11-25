@@ -70,6 +70,10 @@ button{font:inherit;cursor:pointer}
 .found.yes{background:var(--ok-bg);color:var(--ok)}
 .row.match-row{background:var(--ok-bg)}
 .empty{padding:26px 16px;text-align:center;color:var(--muted)}
+.syncbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-bottom:8px}
+.sync-text{font-size:13px;color:var(--muted);min-width:0;word-break:break-word}
+.syncbar.bad .sync-text{color:var(--danger)}
+.btn:disabled{opacity:.55}
 .dock{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);max-width:560px;margin:0 auto}
 .dock .btn{flex:1}
 dialog{border:1px solid var(--line);border-radius:16px;padding:0;width:min(92vw,460px);background:var(--card);color:var(--ink)}
@@ -117,6 +121,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   </nav>
 
   <section id="tab-fabrics">
+    <div class="card syncbar" id="syncBar"><div class="sync-text" id="syncText">Google Sheet: not connected.</div><button class="btn small" id="syncBtn" type="button">Connect</button></div>
     <div class="toolbar">
       <input type="search" id="search" placeholder="Search fabric code" autocomplete="off">
       <button class="btn small" id="selAll" type="button">All</button>
@@ -167,6 +172,11 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="field inline"><input type="checkbox" id="sSound"><label for="sSound" style="margin:0">Beep on match</label></div>
   <div class="field inline"><input type="checkbox" id="sVibe"><label for="sVibe" style="margin:0">Vibrate on match</label></div>
   <div class="field inline"><input type="checkbox" id="sCam"><label for="sCam" style="margin:0">Start the camera automatically</label></div>
+  <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+  <div class="field"><label for="sSheet">Google Sheet link</label><input type="text" id="sSheet" placeholder="Paste the sheet link here" autocomplete="off" inputmode="url">
+    <small>In Google Sheets tap Share and set General access to "Anyone with the link" (Viewer). Row 1 headings: <b>Fabric Code</b> and <b>Tag ID</b>. Set both columns to Format, Number, Plain text.</small></div>
+  <div class="field inline"><input type="checkbox" id="sAuto"><label for="sAuto" style="margin:0">Sync automatically when the app opens</label></div>
+  <div class="field"><button class="btn small" id="sheetSync" type="button">Save link and sync now</button></div>
   <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
   <div class="field"><label for="testBox">Test without the scanner</label>
     <div class="toolbar"><input type="text" id="testBox" placeholder="Type a tag ID or fabric code"><button class="btn small" id="testGo" type="button">Scan</button></div></div>
@@ -300,24 +310,38 @@ async function readXlsxRows(buf) {
   }
   return rows.filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); });
 }
+function sheetUrls(link) {
+  link = String(link || '').trim();
+  if (!link) return [];
+  var m, gid = (link.match(/[?#&]gid=(\d+)/) || [])[1], g = gid ? '&gid=' + gid : '';
+  if ((m = link.match(/\/spreadsheets\/d\/e\/([A-Za-z0-9_-]+)/))) {
+    if (/output=csv/.test(link)) return [link];
+    return ['https://docs.google.com/spreadsheets/d/e/' + m[1] + '/pub?output=csv' + g];
+  }
+  if ((m = link.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/))) {
+    return ['https://docs.google.com/spreadsheets/d/' + m[1] + '/export?format=csv' + g, 'https://docs.google.com/spreadsheets/d/' + m[1] + '/gviz/tq?tqx=out:csv' + g];
+  }
+  if (/^[A-Za-z0-9_-]{25,}$/.test(link)) return sheetUrls('https://docs.google.com/spreadsheets/d/' + link + '/edit');
+  return [];
+}
 /*CORE-END*/
 
 /* ================= APP ================= */
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var KEY = 'fabricFinder.v1';
-  var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true };
+  var DEFAULTS = { matchMode: 'contains', ignoreCase: true, stripSpaces: true, holdSeconds: 3, idleMs: 120, sound: true, vibrate: true, cameraOn: true, sheetLink: '', autoSync: true, lastSync: 0 };
   var state = { targets: [], settings: Object.assign({}, DEFAULTS), log: [] };
   var nextId = 1, holdUntil = 0, otherUntil = 0, matchTimes = [], lastBeep = 0, lastMatchKey = '', stream = null, audio = null, idleTimer = null, toastTimer = null;
 
   function load() {
     try {
       var s = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (s) { state.targets = (s.targets || []).map(function (t) { return { id: nextId++, code: t.code, tag: t.tag || '', active: t.active !== false, found: 0, last: 0 }; }); state.settings = Object.assign({}, DEFAULTS, s.settings || {}); }
+      if (s) { state.targets = (s.targets || []).map(function (t) { return { id: nextId++, code: t.code, tag: t.tag || '', src: t.src === 'sheet' ? 'sheet' : 'local', active: t.active !== false, found: 0, last: 0 }; }); state.settings = Object.assign({}, DEFAULTS, s.settings || {}); }
     } catch (e) { }
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ settings: state.settings, targets: state.targets.map(function (t) { return { code: t.code, tag: t.tag, active: t.active }; }) })); } catch (e) { }
+    try { localStorage.setItem(KEY, JSON.stringify({ settings: state.settings, targets: state.targets.map(function (t) { return { code: t.code, tag: t.tag, src: t.src, active: t.active }; }) })); } catch (e) { }
   }
   function toast(msg) {
     var old = document.querySelector('.toast'); if (old) old.remove();
@@ -451,7 +475,7 @@ async function readXlsxRows(buf) {
     if (replace) state.targets = [];
     var have = {}; state.targets.forEach(function (t) { have[t.code + '|' + t.tag] = 1; });
     var added = 0;
-    list.forEach(function (t) { var k = t.code + '|' + t.tag; if (have[k]) return; have[k] = 1; state.targets.push({ id: nextId++, code: t.code, tag: t.tag || '', active: true, found: 0, last: 0 }); added++; });
+    list.forEach(function (t) { var k = t.code + '|' + t.tag; if (have[k]) return; have[k] = 1; state.targets.push({ id: nextId++, code: t.code, tag: t.tag || '', src: 'local', active: true, found: 0, last: 0 }); added++; });
     save(); renderLists(); idleStatus();
     toast(added + ' fabric' + (added === 1 ? '' : 's') + ' ' + (replace ? 'loaded' : 'added') + '.');
   }
@@ -489,15 +513,71 @@ async function readXlsxRows(buf) {
     });
   });
 
-  /* ---------- settings ---------- */
-  function fillSettings() {
-    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn;
+  /* ---------- Google Sheet sync ---------- */
+  var syncing = false, syncMsg = '';
+  function timeStr(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function renderSync() {
+    var s = state.settings, n = state.targets.filter(function (x) { return x.src === 'sheet'; }).length, txt;
+    if (!s.sheetLink) { txt = 'Google Sheet: not connected. Tap Connect and paste your sheet link.'; $('syncBtn').textContent = 'Connect'; }
+    else { $('syncBtn').textContent = 'Sync now'; txt = syncing ? 'Syncing...' : (syncMsg || (s.lastSync ? 'Synced ' + timeStr(s.lastSync) + ' - ' + n + ' fabric' + (n === 1 ? '' : 's') + ' from the Google Sheet' : 'Not synced yet.')); }
+    $('syncText').textContent = txt; $('syncBtn').disabled = syncing; $('syncBar').classList.toggle('bad', /^Could not/.test(txt));
   }
-  $('btnSettings').addEventListener('click', function () { fillSettings(); $('testBox').value = ''; $('dlgSettings').showModal(); });
+  function applySheet(list) {
+    var old = {}; state.targets.forEach(function (x) { old[x.code + '|' + x.tag] = x; });
+    var keep = state.targets.filter(function (x) { return x.src !== 'sheet'; }), have = {}, next = [];
+    keep.forEach(function (x) { have[x.code + '|' + x.tag] = 1; });
+    list.forEach(function (x) { var k = x.code + '|' + x.tag; if (have[k]) return; have[k] = 1; var o = old[k]; next.push({ id: o ? o.id : nextId++, code: x.code, tag: x.tag || '', src: 'sheet', active: o ? o.active : true, found: o ? o.found : 0, last: o ? o.last : 0 }); });
+    state.targets = keep.concat(next); save(); renderLists(); idleStatus();
+  }
+  async function fetchSheetText(link) {
+    var urls = sheetUrls(link), lastErr = null;
+    if (!urls.length) throw new Error('That does not look like a Google Sheet link.');
+    for (var i = 0; i < urls.length; i++) {
+      var ctrl = new AbortController(), tm = setTimeout(function () { ctrl.abort(); }, 15000);
+      try {
+        var r = await fetch(urls[i], { cache: 'no-store', signal: ctrl.signal }); clearTimeout(tm);
+        if (!r.ok) { lastErr = new Error('Google replied ' + r.status + '. Check the sheet is shared as "Anyone with the link".'); continue; }
+        var txt = await r.text();
+        if (/^\s*<(!doctype|html)/i.test(txt)) { lastErr = new Error('The sheet is not shared. Set sharing to "Anyone with the link" (Viewer).'); continue; }
+        return txt;
+      } catch (e) { clearTimeout(tm); lastErr = new Error('No connection to Google, or the sheet is not shared with "Anyone with the link".'); }
+    }
+    throw lastErr || new Error('Could not read the sheet.');
+  }
+  async function syncSheet(manual) {
+    var link = state.settings.sheetLink;
+    if (!link) { if (manual) openSettings(true); return; }
+    if (syncing) return;
+    syncing = true; syncMsg = ''; renderSync();
+    try {
+      var list = rowsToTargets(parseDelimited(await fetchSheetText(link)));
+      if (!list.length) throw new Error('The sheet has no fabric codes. Put them under a "Fabric Code" heading in row 1.');
+      applySheet(list); state.settings.lastSync = Date.now(); save();
+      if (manual) toast('Synced ' + list.length + ' fabric' + (list.length === 1 ? '' : 's') + ' from the Google Sheet.');
+    } catch (e) {
+      syncMsg = 'Could not sync: ' + e.message + (state.targets.length ? ' Using the saved list.' : '');
+      if (manual) toast('Could not sync. ' + e.message);
+    }
+    syncing = false; renderSync();
+  }
+  $('syncBtn').addEventListener('click', function () { syncSheet(true); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && state.settings.autoSync && state.settings.sheetLink && Date.now() - (state.settings.lastSync || 0) > 5 * 60 * 1000) syncSheet(false); });
+
+  /* ---------- settings ---------- */
+  function openSettings(focusSheet) { fillSettings(); $('testBox').value = ''; $('dlgSettings').showModal(); if (focusSheet) setTimeout(function () { $('sSheet').focus(); }, 60); }
+  function fillSettings() {
+    var s = state.settings; $('sMatch').value = s.matchMode; $('sCase').checked = s.ignoreCase; $('sSpaces').checked = s.stripSpaces; $('sHold').value = s.holdSeconds; $('sIdle').value = s.idleMs; $('sSound').checked = s.sound; $('sVibe').checked = s.vibrate; $('sCam').checked = s.cameraOn; $('sSheet').value = s.sheetLink || ''; $('sAuto').checked = s.autoSync !== false;
+  }
+  $('btnSettings').addEventListener('click', function () { openSettings(false); });
+  $('sheetSync').addEventListener('click', function () { state.settings.sheetLink = $('sSheet').value.trim(); state.settings.autoSync = $('sAuto').checked; save(); syncSheet(true); });
   $('setClose').addEventListener('click', function () {
     var s = state.settings; s.matchMode = $('sMatch').value; s.ignoreCase = $('sCase').checked; s.stripSpaces = $('sSpaces').checked;
     s.holdSeconds = Math.max(1, Math.min(30, +$('sHold').value || 3)); s.idleMs = Math.max(40, Math.min(1000, +$('sIdle').value || 120));
-    s.sound = $('sSound').checked; s.vibrate = $('sVibe').checked; s.cameraOn = $('sCam').checked; save(); $('dlgSettings').close(); setTimeout(refocus, 50);
+    s.sound = $('sSound').checked; s.vibrate = $('sVibe').checked; s.cameraOn = $('sCam').checked;
+    var oldLink = s.sheetLink || ''; s.sheetLink = $('sSheet').value.trim(); s.autoSync = $('sAuto').checked;
+    if (!s.sheetLink && oldLink) state.targets.forEach(function (x) { if (x.src === 'sheet') x.src = 'local'; });
+    save(); $('dlgSettings').close(); setTimeout(refocus, 50); renderSync();
+    if (s.sheetLink && s.sheetLink !== oldLink) syncSheet(true);
   });
   $('testGo').addEventListener('click', function () { var v = $('testBox').value; if (v.trim()) { $('dlgSettings').close(); handleScan(v, 'test'); $('testBox').value = ''; } });
   $('testBox').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('testGo').click(); } });
@@ -518,12 +598,13 @@ async function readXlsxRows(buf) {
   load();
   var params = new URLSearchParams(location.search);
   if (params.get('demo') === '1' && !state.targets.length) {
-    state.targets = ['FAB-1001', 'FAB-1002', 'FAB-1003', 'LINEN-WHITE-07', 'OXFORD-BLUE-12', 'CORD-BROWN-03'].map(function (c) { return { id: nextId++, code: c, tag: '', active: true, found: 0, last: 0 }; });
+    state.targets = ['FAB-1001', 'FAB-1002', 'FAB-1003', 'LINEN-WHITE-07', 'OXFORD-BLUE-12', 'CORD-BROWN-03'].map(function (c) { return { id: nextId++, code: c, tag: '', src: 'local', active: true, found: 0, last: 0 }; });
   }
   camUi(false, 'Camera is off');
-  renderLists(); idleStatus(); setInterval(tick, 150);
+  renderLists(); idleStatus(); renderSync(); setInterval(tick, 150);
   if (state.settings.cameraOn && params.get('nocam') !== '1') startCam();
   setTimeout(refocus, 100);
+  if (state.settings.sheetLink && state.settings.autoSync) setTimeout(function () { syncSheet(false); }, 400);
   if (params.get('sim')) setTimeout(function () { handleScan(params.get('sim'), 'test'); }, 150);
 })();
 </script>
@@ -535,4 +616,3 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 </script>
 </body>
 </html>
-
