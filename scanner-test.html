@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scanner test</title>
+<style>
+  body{font:15px/1.4 system-ui,Arial,sans-serif;margin:0;padding:12px 14px 40px;background:#f3f6f4;color:#14201a;max-width:640px;margin:0 auto}
+  h1{font-size:19px;margin:6px 0 4px}
+  .card{background:#fff;border:1px solid #d6dfda;border-radius:12px;padding:12px;margin:10px 0}
+  label{display:block;font-weight:700;margin:8px 0 4px}
+  input,textarea,[contenteditable]{width:100%;box-sizing:border-box;border:2px solid #9db2a7;border-radius:10px;padding:12px;font:inherit;background:#fff;min-height:48px}
+  input:focus,textarea:focus,[contenteditable]:focus{border-color:#15803d;outline:none;box-shadow:0 0 0 3px #dcfce7}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  button{font:inherit;font-weight:700;border:1px solid #0f766e;background:#0f766e;color:#fff;border-radius:10px;padding:11px 14px;min-height:44px}
+  button.alt{background:#fff;color:#0f766e}
+  pre{white-space:pre-wrap;word-break:break-all;background:#0e1612;color:#d7f5e3;border-radius:10px;padding:10px;font-size:12px;max-height:46vh;overflow:auto;margin:6px 0}
+  .big{font-size:22px;font-weight:800}
+  small{color:#5b6b62}
+</style>
+</head>
+<body>
+<h1>Scanner test</h1>
+<small>This page only records what your scanner sends. It does not match anything.</small>
+
+<div class="card">
+  <b>How to test</b>
+  <ol style="margin:6px 0 0 18px;padding:0">
+    <li>Tap the <b>first box</b> once.</li>
+    <li>Pull the trigger over one tagged swatch.</li>
+    <li>Watch the numbers and the log below. Then do the same for the <b>second</b> and <b>third</b> boxes.</li>
+    <li>Tap <b>Copy log</b> and paste it into WhatsApp or email to send it to me. A screenshot of this page also works.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <label for="a">Box 1: normal text box</label>
+  <input id="a" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Tap here, then pull the trigger">
+  <label for="b">Box 2: multi-line box</label>
+  <textarea id="b" rows="2" placeholder="Tap here, then pull the trigger"></textarea>
+  <label for="c">Box 3: editable area</label>
+  <div id="c" contenteditable="true" role="textbox" aria-label="editable area"></div>
+</div>
+
+<div class="card">
+  <div class="big" id="stats">Keys: 0 &nbsp; Input events: 0</div>
+  <div id="last">Last value: (nothing yet)</div>
+  <div class="row" style="margin-top:8px"><button id="copy">Copy log</button><button id="clear" class="alt">Clear</button></div>
+  <pre id="log"></pre>
+</div>
+
+<div class="card"><b>About this device</b><pre id="info"></pre></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var lines = [], keys = 0, inputs = 0, t0 = Date.now();
+  function ts() { return String(((Date.now() - t0) / 1000).toFixed(2)).padStart(6, ' '); }
+  function who(e) { var t = e.target || {}; return (t.id || t.tagName || '?'); }
+  function add(s) { lines.push(s); if (lines.length > 200) lines.shift(); $('log').textContent = lines.slice(-70).join('\n'); $('log').scrollTop = $('log').scrollHeight; }
+  function stats() { $('stats').textContent = 'Keys: ' + keys + '   Input events: ' + inputs; }
+  function show(v) { $('last').textContent = 'Last value: ' + (v || '(empty)'); }
+
+  ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend', 'paste', 'change'].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var d = '';
+      if (type === 'keydown') { keys++; d = 'key=' + JSON.stringify(e.key) + ' code=' + e.code + ' keyCode=' + e.keyCode; }
+      else if (type === 'keyup' || type === 'keypress') d = 'key=' + JSON.stringify(e.key);
+      else if (type === 'beforeinput' || type === 'input') { if (type === 'input') inputs++; d = 'inputType=' + e.inputType + ' data=' + JSON.stringify(e.data); var v = (e.target.value !== undefined) ? e.target.value : e.target.textContent; d += ' value=' + JSON.stringify(String(v).slice(-60)); if (type === 'input') show(String(v)); }
+      else if (type.indexOf('composition') === 0) d = 'data=' + JSON.stringify(e.data);
+      else if (type === 'paste') d = 'pasted';
+      if (type !== 'keyup' && type !== 'keypress' || lines.length < 40) add(ts() + ' ' + type.padEnd(17) + ' [' + who(e) + '] ' + d);
+      stats();
+    }, true);
+  });
+  ['focusin', 'focusout'].forEach(function (type) { document.addEventListener(type, function (e) { add(ts() + ' ' + type.padEnd(17) + ' [' + who(e) + ']'); }, true); });
+  document.addEventListener('visibilitychange', function () { add(ts() + ' visibility=' + document.visibilityState); });
+
+  $('copy').addEventListener('click', function () {
+    var text = $('info').textContent + '\n\n' + lines.join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { $('copy').textContent = 'Copied'; setTimeout(function () { $('copy').textContent = 'Copy log'; }, 1500); }, function () { fallback(text); });
+    else fallback(text);
+  });
+  function fallback(text) { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); $('copy').textContent = 'Copied'; } catch (e) { $('copy').textContent = 'Copy failed - take a screenshot'; } ta.remove(); setTimeout(function () { $('copy').textContent = 'Copy log'; }, 1500); }
+  $('clear').addEventListener('click', function () { lines = []; keys = 0; inputs = 0; $('log').textContent = ''; show(''); stats(); $('a').value = ''; $('b').value = ''; $('c').textContent = ''; });
+
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  $('info').textContent = [
+    'Page: ' + location.href,
+    'Mode: ' + (standalone ? 'installed app (standalone)' : 'normal browser tab'),
+    'Browser: ' + navigator.userAgent,
+    'virtualKeyboard API: ' + (navigator.virtualKeyboard ? 'yes' : 'no'),
+    'Screen: ' + screen.width + 'x' + screen.height + '  dpr ' + window.devicePixelRatio,
+    'Time: ' + new Date().toString()
+  ].join('\n');
+  stats();
+})();
+</script>
+</body>
+</html>
